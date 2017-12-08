@@ -32,6 +32,7 @@
 #include <lmic.h>
 #include <hal/hal.h>
 #include <SPI.h>
+#include <LowPower.h>
 
 // LoRaWAN NwkSKey, network session key
 // This is the default Semtech key, which is used by the early prototype TTN
@@ -67,6 +68,19 @@ const lmic_pinmap lmic_pins = {
     .rst = 5,
     .dio = {2, 3, 4},
 };
+
+
+void startSleep() {
+    LMIC_shutdown();
+
+    stopIRSensors();
+
+    for (uint8_t i = 0; i < 10; i++) {
+        LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);	// Put Arduino in Sleep mode 12 times 8 seconds
+    }
+
+    setupIRSensors();
+}
 
 void onEvent (ev_t ev) {
     Serial.print(os_getTime());
@@ -108,6 +122,10 @@ void onEvent (ev_t ev) {
               Serial.println(LMIC.dataLen);
               Serial.println(F(" bytes of payload"));
             }
+
+            startSleep();
+            setupLMIC();
+
             // Schedule next transmission
             os_setTimedCallback(&sendjob, os_getTime()+sec2osticks(TX_INTERVAL), do_send);
             break;
@@ -133,29 +151,70 @@ void onEvent (ev_t ev) {
     }
 }
 
-void do_send(osjob_t* j){
+void do_send(osjob_t* j) {
     // Check if there is not a current TX/RX job running
     if (LMIC.opmode & OP_TXRXPEND) {
         Serial.println(F("OP_TXRXPEND, not sending"));
     } else {
+        sendFire();
+        sendBattery();
         // Prepare upstream data transmission at the next possible time.
-        LMIC_setTxData2(1, mydata, sizeof(mydata)-1, 0);
+        //LMIC_setTxData2(1, mydata, sizeof(mydata)-1, 0);
         Serial.println(F("Packet queued"));
     }
     // Next TX is scheduled after TX_COMPLETE event.
 }
 
-void setup() {
+void sendBattery() {
+
+
+        LMIC_setTxData2(1, mydata, sizeof(mydata)-1, 0);
+
+}
+
+
+void sendFire() {
+        LMIC_setTxData2(2, mydata, sizeof(mydata)-1, 0);
+
+}
+
+void setupSerial() {
     Serial.begin(115200);
     Serial.println(F("Starting"));
+}
 
-    #ifdef VCC_ENABLE
-    // For Pinoccio Scout boards
-    pinMode(VCC_ENABLE, OUTPUT);
-    digitalWrite(VCC_ENABLE, HIGH);
-    delay(1000);
-    #endif
+void stopIRSensors() {
+    digitalWrite(7, LOW);
+    digitalWrite(8, LOW);
+    digitalWrite(9, LOW);
+    digitalWrite(10, LOW);
 
+    pinMode(7, INPUT);
+    pinMode(8, INPUT);
+    pinMode(9, INPUT);
+    pinMode(10, INPUT);
+}
+
+void setupIRSensors() {
+
+    pinMode(A0, INPUT);
+    pinMode(A1, INPUT);
+    pinMode(A2, INPUT);
+    pinMode(A3, INPUT);
+
+    pinMode(7, OUTPUT);
+    pinMode(8, OUTPUT);
+    pinMode(9, OUTPUT);
+    pinMode(10, OUTPUT);
+
+    digitalWrite(7, HIGH);
+    digitalWrite(8, HIGH);
+    digitalWrite(9, HIGH);
+    digitalWrite(10, HIGH);
+}
+
+
+void setupLMIC() {
     // LMIC init
     os_init();
     // Reset the MAC state. Session and pending data transfers will be discarded.
@@ -219,6 +278,14 @@ void setup() {
 
     // Start job
     do_send(&sendjob);
+}
+
+
+
+void setup() {
+    setupSerial();
+    setupIRSensors();
+    setupLMIC();
 }
 
 void loop() {
